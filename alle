@@ -1,0 +1,250 @@
+#include <iostream>
+#include <vector>
+#include <string>
+#include <algorithm>
+
+using namespace std;
+
+// ==============================================================================
+// 1. BÁZOVÁ TŘÍDA Ucet (Abstraktní)
+// ==============================================================================
+class Ucet {
+protected: // Protected, aby na tyto proměnné viděli potomci
+    string cisloUctu;
+    vector<double> historieTransakci;
+    static int pocetUctu; // Statické počítadlo objektů
+
+public:
+    // Konstruktor: Nastaví číslo a zvedne počítadlo
+    Ucet(string cisloUctu) {
+        this->cisloUctu = cisloUctu;
+        pocetUctu++;
+    }
+
+    // Virtuální destruktor: Důležitý pro polymorfismus a memory management
+    virtual ~Ucet() {
+        pocetUctu--;
+    }
+
+    // Statická metoda pro zjištění počtu (volá se Ucet::getPocet())
+    static int getPocet() {
+        return pocetUctu;
+    }
+
+    // Přidá jednu transakci
+    void pridejTransakci(double hodnota) {
+        historieTransakci.push_back(hodnota);
+    }
+
+    // Přetížená metoda: Přidá rovnou celý vektor transakcí
+    void pridejTransakce(const vector<double>& hodnoty) {
+        for (int i = 0; i < hodnoty.size(); i++) {
+            historieTransakci.push_back(hodnoty[i]);
+        }
+    }
+
+    // Getter na historii (vrací referenci &, abychom v ní mohli později mazat)
+    vector<double>& getHistorie() {
+        return historieTransakci;
+    }
+
+    // Čistě virtuální metoda = 0 (dělá z této třídy abstraktní třídu)
+    virtual void analyzujUcet() const = 0;
+
+    // Virtuální výpis, který pak potomci zavolají přes Ucet::vypisInfo()
+    virtual void vypisInfo() const {
+        cout << "Cislo uctu: " << cisloUctu 
+             << ", pocet transakci: " << historieTransakci.size() << endl;
+    }
+};
+
+// Inicializace statické proměnné (musí být mimo tělo třídy!)
+int Ucet::pocetUctu = 0;
+
+
+// ==============================================================================
+// 2A. ODVOZENÁ TŘÍDA SporiciUcet
+// ==============================================================================
+class SporiciUcet : public Ucet {
+private:
+    double urokovaSazba;
+public:
+    // Nezapomeň v konstruktoru zavolat konstruktor předka!
+    SporiciUcet(string cisloUctu, double urokovaSazba) : Ucet(cisloUctu) {
+        this->urokovaSazba = urokovaSazba;
+    }
+
+    void vypisInfo() const override {
+        Ucet::vypisInfo(); // Vypíše základ od táty
+        cout << "Urokova sazba: " << urokovaSazba << " %" << endl;
+    }
+
+    void analyzujUcet() const override {
+        double suma = 0;
+        int pocetVkladu = 0;
+        
+        for (int i = 0; i < historieTransakci.size(); i++) {
+            if (historieTransakci[i] > 0) { // Bereme jen kladná čísla (vklady)
+                suma += historieTransakci[i];
+                pocetVkladu++;
+            }
+        }
+        
+        if (pocetVkladu > 0) {
+            cout << "Prumerna hodnota vkladu: " << (suma / pocetVkladu) << endl;
+        } else {
+            cout << "Zadne vklady na uctu nejsou." << endl;
+        }
+    }
+};
+
+
+// ==============================================================================
+// 2B. ODVOZENÁ TŘÍDA BeznyUcet (s přetížením operátorů)
+// ==============================================================================
+class BeznyUcet : public Ucet {
+private:
+    double poplatek;
+public:
+    BeznyUcet(string cisloUctu, double poplatek) : Ucet(cisloUctu) {
+        this->poplatek = poplatek;
+    }
+
+    void vypisInfo() const override {
+        Ucet::vypisInfo();
+        cout << "Poplatek za vedeni: " << poplatek << endl;
+    }
+
+    void analyzujUcet() const override {
+        int pocetVyberu = 0;
+        for (int i = 0; i < historieTransakci.size(); i++) {
+            if (historieTransakci[i] < 0) { // Bereme jen záporná čísla (výběry)
+                pocetVyberu++;
+            }
+        }
+        cout << "Celkovy pocet vyberu: " << pocetVyberu << endl;
+    }
+
+    // OPERÁTOR == : Porovnává pouze podle poplatku
+    bool operator==(const BeznyUcet& other) const {
+        if (this->poplatek == other.poplatek) {
+            return true;
+        }
+        return false;
+    }
+
+    // OPERÁTOR += : Přidá transakci
+    BeznyUcet& operator+=(double hodnota) {
+        this->pridejTransakci(hodnota); // Využijeme metodu předka
+        return *this;
+    }
+
+    // OPERÁTOR << : Vypisuje účet přímo do cout
+    friend ostream& operator<<(ostream& os, const BeznyUcet& ucet);
+};
+
+// Implementace operátoru výpisu mimo třídu
+ostream& operator<<(ostream& os, const BeznyUcet& ucet) {
+    os << "BeznyUcet[" << ucet.cisloUctu << "], transakci: " << ucet.historieTransakci.size();
+    return os;
+}
+
+
+// ==============================================================================
+// 3. ALGORITMY (Volné funkce)
+// ==============================================================================
+
+// Algoritmus 1: Nejdelší řada vkladů (> 0)
+void nejdelsiRadaVkladu(Ucet* u) {
+    const vector<double>& transakce = u->getHistorie();
+    int aktualniRada = 0;
+    int rekord = 0;
+
+    for (int i = 0; i < transakce.size(); i++) {
+        if (transakce[i] > 0) {
+            aktualniRada++; // Je to kladné, zvětšujeme kombo
+            if (aktualniRada > rekord) {
+                rekord = aktualniRada; // Uložíme nový rekord
+            }
+        } else {
+            aktualniRada = 0; // Jakmile narazíme na výběr, kombo se nuluje
+        }
+    }
+    cout << "Nejdelsi rada vkladu v kuse: " << rekord << endl;
+}
+
+// Algoritmus 2: Odstranění drobných výběrů (mezi -50 a 0)
+void vymazDrobneVybery(Ucet* u) {
+    vector<double>& transakce = u->getHistorie();
+
+    // Standardní Erase-Remove Idiom s lambdou, který jsme už trénovali
+    transakce.erase(remove_if(transakce.begin(), transakce.end(), [](double hodnota) {
+        // Mažeme to, co je záporné A ZÁROVEŇ větší než -50 (tedy -1 až -49)
+        return hodnota < 0 && hodnota > -50; 
+    }), transakce.end());
+    
+    cout << "Drobne vybery smazany!" << endl;
+}
+
+
+// ==============================================================================
+// 4. MAIN - TESTOVÁNÍ VŠEHO DLE ZADÁNÍ
+// ==============================================================================
+int main() {
+    // 1. Výpis počátečního stavu (musí být 0)
+    cout << "1. Pocatecni pocet uctu: " << Ucet::getPocet() << endl << endl;
+
+    // --- TEST OPERÁTORŮ (TIP ZE ZADÁNÍ) ---
+    cout << "--- TEST OPERATORU ---" << endl;
+    BeznyUcet ucetA("CZ-111", 150.0);
+    BeznyUcet ucetB("CZ-222", 150.0);
+
+    // Test ==
+    if (ucetA == ucetB) {
+        cout << "Ucty maji totozny poplatek." << endl;
+    } else {
+        cout << "Ucty maji rozdilny poplatek." << endl;
+    }
+
+    // Test += a <<
+    ucetA += 1000.5;
+    cout << "Vypis pres operator: " << ucetA << endl << endl;
+
+    // 2. Tvorba vektoru a vkládání účtů (přes new)
+    vector<Ucet*> seznam;
+    seznam.push_back(new BeznyUcet("B-001", 100.0));
+    seznam.push_back(new BeznyUcet("B-002", 200.0));
+    seznam.push_back(new SporiciUcet("S-001", 4.5));
+
+    // Přidání dat pro algoritmy. Využíváme vector inicializátor {...} pro přidání více čísel.
+    seznam[0]->pridejTransakce({1000, 500, -20, -10, 800, 200, 100, -100}); 
+    seznam[1]->pridejTransakci(5000);
+    seznam[2]->pridejTransakci(100);
+
+    // 3. Projití cyklem a výpis (Polymorfismus)
+    cout << "--- VYPIS Z VEKTORU ---" << endl;
+    for (int i = 0; i < seznam.size(); i++) {
+        seznam[i]->vypisInfo();
+        seznam[i]->analyzujUcet();
+        cout << "--------------------" << endl;
+    }
+
+    // 4. a 5. Otestování obou algoritmů na prvním účtu
+    cout << endl << "--- TEST ALGORITMU ---" << endl;
+    nejdelsiRadaVkladu(seznam[0]);
+    vymazDrobneVybery(seznam[0]);
+    
+    cout << "Vypis prvniho uctu po smazani (z 8 by melo zbýt 6 transakci):" << endl;
+    seznam[0]->vypisInfo();
+
+    // 6. Úklid paměti
+    cout << endl << "--- UKLID PAMETI ---" << endl;
+    for (int i = 0; i < seznam.size(); i++) {
+        delete seznam[i]; // Tímto se zavolají destruktory a sníží se počítadlo!
+    }
+
+    // 7. Závěrečný výpis (zbývají jen 2 účty, které jsme si vytvořili bez new na zásobníku)
+    cout << "Konecny pocet uctu: " << Ucet::getPocet() << endl;
+
+    return 0;
+}
