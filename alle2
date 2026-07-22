@@ -1,0 +1,184 @@
+#include <iostream>
+#include <vector>
+#include <string>
+#include <algorithm> 
+
+using namespace std;
+
+// ============================================================================
+// 1. BÁZOVÁ TŘÍDA: ServerNode
+// ============================================================================
+class ServerNode {
+private:
+    string nazev;
+    static int pocetServeru; 
+
+protected:
+    vector<double> zatezCPU;
+
+public:
+    ServerNode(const string& nazev) : nazev(nazev) {
+        pocetServeru++;
+    }
+    
+    virtual ~ServerNode() {
+        pocetServeru--;
+    }
+
+    static int getPocetServeru() {
+        return pocetServeru;
+    }
+
+    void pridejZaznam(double zatez) {
+        zatezCPU.push_back(zatez);
+    }
+    
+    const vector<double>& getZatezCPU() const { return zatezCPU; }
+    vector<double>& getZatezCPU() { return zatezCPU; }
+
+    string getNazev() const { return nazev; }
+
+    virtual void diagnostika() = 0;
+
+    friend ostream& operator<<(ostream& os, const ServerNode& node) {
+        os << "[" << node.nazev << "] Historie: ";
+        if (node.zatezCPU.empty()) {
+            os << "Zadne zaznamy";
+        } else {
+            for (double zatez : node.zatezCPU) {
+                os << zatez << "%, ";
+            }
+        }
+        return os;
+    }
+};
+
+int ServerNode::pocetServeru = 0;
+
+
+// ============================================================================
+// 2. ODVOZENÁ TŘÍDA 1: KritickyServer
+// ============================================================================
+class KritickyServer : public ServerNode {
+public:
+    KritickyServer(const string& nazev) : ServerNode(nazev) {}
+
+    void diagnostika() override {
+        cout << "[" << getNazev() << "]: Spustena kriticka bezpecnostni diagnostika jadra." << endl;
+    }
+};
+
+
+// ============================================================================
+// 3. ODVOZENÁ TŘÍDA 2: KlustrovyServer (BEZ VÝJIMEK)
+// ============================================================================
+class KlustrovyServer : public ServerNode {
+public:
+    KlustrovyServer(const string& nazev) : ServerNode(nazev) {}
+
+    void diagnostika() override {
+        cout << "[" << getNazev() << "]: Probiha synchronizace klustru." << endl;
+    }
+    
+    // Přetížení operátoru + (ošetření chyby výpisem místo throw)
+    KlustrovyServer operator+(const KlustrovyServer& druhy) const {
+        // KONTROLA BEZ VÝJIMKY
+        if (this->zatezCPU.size() != druhy.zatezCPU.size()) {
+            cout << "CHYBA: Nelze spojit klustry s ruznym poctem mereni!" << endl;
+            // Vrátíme prázdný objekt, aby program nespadl a mohl pokračovat
+            return KlustrovyServer("Chyba_Spojeni"); 
+        }
+
+        KlustrovyServer vysledek(this->getNazev() + " + " + druhy.getNazev());
+
+        for (size_t i = 0; i < this->zatezCPU.size(); ++i) {
+            double prumer = (this->zatezCPU[i] + druhy.zatezCPU[i]) / 2.0;
+            vysledek.pridejZaznam(prumer);
+        }
+
+        return vysledek;
+    }
+};
+
+
+// ============================================================================
+// 4. SAMOSTATNÉ ALGORITMY
+// ============================================================================
+void odstranDuplicity(vector<double>& zatez) {
+    sort(zatez.begin(), zatez.end());
+    zatez.erase(unique(zatez.begin(), zatez.end()), zatez.end());
+}
+
+int detekujSkokyZateze(const vector<double>& zatez, double hranice) {
+    int pocetSkoku = 0;
+    if (zatez.size() < 2) return 0;
+
+    for (size_t i = 1; i < zatez.size(); i++) {
+        double narust = zatez[i] - zatez[i - 1];
+        if (narust > hranice) {
+            cout << " -> Skok na indexu " << i << ": narust z " 
+                 << zatez[i - 1] << "% na " << zatez[i] << "%" << endl;
+            pocetSkoku++;
+        }
+    }
+    return pocetSkoku;
+}
+
+
+// ============================================================================
+// 5. HLAVNÍ PROGRAM (MAIN) - BEZ TRY/CATCH
+// ============================================================================
+int main() {
+    cout << "Pocatecni pocet serveru: " << ServerNode::getPocetServeru() << "\n\n";
+
+    cout << "--- Test algoritmu nad std::vector ---\n";
+    KritickyServer k1("Sec-Master");
+    k1.pridejZaznam(40.0);
+    k1.pridejZaznam(40.0);
+    k1.pridejZaznam(45.0);
+    k1.pridejZaznam(90.0);
+    k1.pridejZaznam(90.0);
+    k1.pridejZaznam(50.0);
+    k1.pridejZaznam(50.0);
+
+    cout << "Pred deduplikaci: " << k1 << endl;
+    odstranDuplicity(k1.getZatezCPU());
+    cout << "Po deduplikaci:   " << k1 << endl;
+
+    cout << "Detekce skoku (hranice 30%):" << endl;
+    int nalezeno = detekujSkokyZateze(k1.getZatezCPU(), 30.0);
+    cout << "Celkem detekovano skoku: " << nalezeno << "\n\n";
+
+
+    cout << "--- Test operatoru + a klustrovani ---\n";
+    KlustrovyServer* nodeX = new KlustrovyServer("Node-X");
+    KlustrovyServer* nodeY = new KlustrovyServer("Node-Y");
+
+    nodeX->pridejZaznam(20.0);
+    nodeX->pridejZaznam(40.0);
+    nodeX->pridejZaznam(60.0);
+
+    nodeY->pridejZaznam(30.0);
+    nodeY->pridejZaznam(50.0);
+
+    // Záměrná chyba: nodeY má jen 2 záznamy, nodeX má 3. 
+    // Místo try/catch program prostě vypíše chybu do konzole, protože jsme to tak naprogramovali.
+    KlustrovyServer chybnyVysledek = *nodeX + *nodeY;
+    
+    // Doplníme záznam a zkusíme to znovu (teď už to projde v pořádku)
+    nodeY->pridejZaznam(70.0);
+    KlustrovyServer vyslednyKlustr = *nodeX + *nodeY;
+    
+    cout << "Pouziti operatoru + po oprave rozmeru:" << endl;
+    cout << vyslednyKlustr << "\n\n";
+
+
+    cout << "--- Uklid pameti ---\n";
+    delete nodeX;
+    delete nodeY;
+
+    // Počítadlo bude 3, protože se nám na chvíli vytvořil i ten chybový prázdný objekt "chybnyVysledek"
+    cout << "Konecny pocet serveru v evidenci: " << ServerNode::getPocetServeru() << endl;
+
+    return 0;
+}
